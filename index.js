@@ -2,37 +2,41 @@ const express = require('express');
 const mongoose = require("mongoose");
 const app = express();
 app.use(express.json());
-
+require('dotenv').config();
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const fs = require('fs');
 
+// "mongodb+srv://Tejeshwar:Tejeshwar1%40@e-learning.3majdl2.mongodb.net/CollegeEvents"
 
-mongoose.connect("mongodb+srv://Tejeshwar:Tejeshwar1%40@e-learning.3majdl2.mongodb.net/CollegeEvents")
+mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log("connection successful"))
     .catch((error) => console.log(error.message));
 
 
+
 cloudinary.config({
-    cloud_name: "YOUR_CLOUD_NAME",
-    api_key: "YOUR_API_KEY",
-    api_secret: "YOUR_API_SECRET"
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
 
 
 const upload = multer({ dest: 'uploads/' });
 
 
+
 const eventSchema = new mongoose.Schema({
     title: { type: String, required: true, trim: true },
+    type: { type: String, required: true, trim: true },
     description: { type: String, required: true },
     details: { type: String, required: true },
-
+    venue: { type: String, required: true, trim: true },
     organisers: [{ type: String, required: true }],
 
     timeline: [
         {
-            stage: { type: String, required: true },
             date: { type: String, required: true }
         }
     ],
@@ -52,7 +56,10 @@ const eventSchema = new mongoose.Schema({
     }
 });
 
+
+
 const Event = mongoose.model("event", eventSchema);
+
 
 
 app.post('/newevent', upload.single('poster'), async (req, res) => {
@@ -65,11 +72,12 @@ app.post('/newevent', upload.single('poster'), async (req, res) => {
         const timeline = JSON.parse(req.body.timeline);
         const timings = JSON.parse(req.body.timings);
 
-
         await Event.collection.insertOne({
             title: req.body.title,
+            type: req.body.type,
             description: req.body.description,
             details: req.body.details,
+            venue: req.body.venue,
             organisers,
             timeline,
             timings,
@@ -83,12 +91,10 @@ app.post('/newevent', upload.single('poster'), async (req, res) => {
         });
 
 
-        fs.unlinkSync(req.file.path);
 
-        res.status(201).json({
-            message: "Event created successfully",
-            image: result.secure_url
-        });
+        fs.unlinkSync(req.file.path);
+        res.status(201)
+        res.send("successful")
 
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -96,16 +102,24 @@ app.post('/newevent', upload.single('poster'), async (req, res) => {
 });
 
 
-app.get("/allevents", async (request, response) => {
+
+app.get("/allevents/:type", async (request, response) => {
     try {
-        const data = await Event.find()
+        const { type } = request.params
+        const data = await Event.find({ type: { $eq: [`${type}`] } })
         response.status(200)
         response.send(data)
     }
     catch (err) {
         response.status(5000)
-        response.send(error.message)
+        response.send(err.message)
     }
+})
+
+
+
+app.post('/event-images', (request, response) => {
+
 })
 
 
@@ -113,4 +127,5 @@ app.get("/allevents", async (request, response) => {
 app.listen(3000, () => {
     console.log("running in port 3000")
 })
+
 
