@@ -170,6 +170,19 @@ app.post('/event-images', upload.single('poster'), async (req, res) => {
 
 
 
+app.get("/images-receive", async (request, response) => {
+    try {
+        const { id } = request.body
+        const data = await EventImages.find({ "_id": id })
+        response.status(200)
+        response.send({ data })
+    }
+    catch (err) {
+        response.send(err.message)
+    }
+})
+
+
 app.listen(3000, () => {
     console.log("running in port 3000")
 })
