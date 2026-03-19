@@ -6,8 +6,8 @@ require('dotenv').config();
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const fs = require('fs');
-
-// "mongodb+srv://Tejeshwar:Tejeshwar1%40@e-learning.3majdl2.mongodb.net/CollegeEvents"
+const { v4: uuidv4 } = require('uuid');
+// "mongodb+srv://Tejeshwar:Tejeshwar1%40@e-learning.3majdl2.mongodb.net/CollegeEvents" 
 
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log("connection successful"))
@@ -25,7 +25,22 @@ cloudinary.config({
 
 const upload = multer({ dest: 'uploads/' });
 
+const eventPhotosSchema = new mongoose.Schema({
+    poster: [
+        {
+            imageId: {
+                type: String,
+                default: uuidv4
+            },
+            url: {
+                type: String,
+                required: true
+            },
+        }
+    ]
+});
 
+const EventImages = new mongoose.model("EventImages", eventPhotosSchema)
 
 const eventSchema = new mongoose.Schema({
     title: { type: String, required: true, trim: true },
@@ -106,21 +121,52 @@ app.post('/newevent', upload.single('poster'), async (req, res) => {
 app.get("/allevents/:type", async (request, response) => {
     try {
         const { type } = request.params
-        const data = await Event.find({ type: { $eq: [`${type}`] } })
+        const data = await Event.find({ type: [`${type}`] })
         response.status(200)
         response.send(data)
     }
     catch (err) {
-        response.status(5000)
+        response.status(500)
         response.send(err.message)
     }
 })
 
 
 
-app.post('/event-images', (request, response) => {
-
-})
+app.post('/event-images', upload.single('poster'), async (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) {
+            return res.status(400).json({ message: "Event ID is required" });
+        }
+        if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded" });
+        }
+        const result = await cloudinary.uploader.upload(req.file.path);
+        const imageData = {
+            url: result.secure_url
+        };
+        const updatedEvent = await EventImages.findByIdAndUpdate(
+            id,
+            {
+                $push: { poster: imageData }
+            },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
+        if (!updatedEvent) {
+            return res.status(404).json({ message: "Event not found" });
+        }
+        res.status(201)
+        res.send("added successfully")
+    } catch (error) {
+        console.error("Upload Error:", error);
+        res.status(500)
+        res.send("internal server error")
+    }
+});
 
 
 
