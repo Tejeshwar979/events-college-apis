@@ -7,7 +7,12 @@ const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
-// "mongodb+srv://Tejeshwar:Tejeshwar1%40@e-learning.3majdl2.mongodb.net/CollegeEvents" 
+const cors = require('cors')
+const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
+app.use(cors())
+
+
 
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log("connection successful"))
@@ -39,6 +44,13 @@ const eventPhotosSchema = new mongoose.Schema({
         }
     ]
 });
+
+const adminsData = new mongoose.Schema({
+    email: String,
+    encpassword: String,
+})
+
+const adminsdata = new mongoose.model("adminsdata", adminsData)
 
 const EventImages = new mongoose.model("EventImages", eventPhotosSchema)
 
@@ -74,6 +86,65 @@ const eventSchema = new mongoose.Schema({
 
 
 const Event = mongoose.model("event", eventSchema);
+
+
+
+app.post('/newadmin', async (request, response) => {
+    try {
+        const { email, password } = request.body
+        const data = await adminsdata.find({ email: email })
+        if (data.length > 0) {
+            response.send(401).json({
+                "message": "user already exists"
+            })
+        }
+        else {
+            const encryptPassword = await bcrypt.hash(password, 10)
+            try {
+                await adminsdata.insertOne({
+                    email: email,
+                    encpassword: encryptPassword
+                })
+                response.send("successful")
+            }
+            catch (error) {
+                response.send(error.message)
+            }
+        }
+    }
+    catch (error) {
+        response.send(error.message)
+    }
+})
+
+
+
+app.post("/adminlogin", async (request, response) => {
+    try {
+        const { email, password } = request.body
+        const data = await adminsdata.findOne({ email: email })
+        if (data.length == 0) {
+            response.send("user doesnot exists")
+        }
+        else {
+            const { encpassword } = data
+            const isVerified = await bcrypt.compare(password, encpassword)
+            if (isVerified) {
+                const payload = {
+                    email: email
+                }
+                const jwtToken = jwt.sign(payload, "MY_SECRET_KEY")
+                response.send({ jwtToken: jwtToken })
+            }
+            else {
+                response.send({ "message": "password is incorrect" })
+            }
+        }
+    }
+    catch (error) {
+        response.send(error.message)
+    }
+})
 
 
 
@@ -181,6 +252,7 @@ app.get("/images-receive", async (request, response) => {
         response.send(err.message)
     }
 })
+
 
 
 app.listen(3000, () => {
