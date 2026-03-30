@@ -26,7 +26,12 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const announcements = new mongoose.Schema({
+    announcement: String,
+    description: String
+})
 
+const announcemet = new mongoose.model("announcements", announcements)
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -119,6 +124,32 @@ app.post('/newadmin', async (request, response) => {
 
 
 
+const jwtVerification = (request, response, next) => {
+    try {
+        const { authorization } = request.headers
+        if (!authorization) {
+            response.status(401)
+            response.send("no authorization")
+        }
+        const jwt_Token = authorization.split(" ")
+        const Token = jwt_Token[1]
+        if (!Token) {
+            response.status(401)
+            response.send({ "message": "error no JWT token" })
+        }
+        else {
+            const decoded = jwt.verify(Token, "MY_SECRET_KEY")
+            request.user = decoded
+            next()
+        }
+    }
+    catch (error) {
+        response.send(error.message)
+    }
+}
+
+
+
 app.post("/adminlogin", async (request, response) => {
     try {
         const { email, password } = request.body
@@ -146,9 +177,77 @@ app.post("/adminlogin", async (request, response) => {
     }
 })
 
+// announcement 
 
 
-app.post('/newevent', upload.single('poster'), async (req, res) => {
+
+app.post('/newannouncement', jwtVerification, async (request, response) => {
+    try {
+        const { announce, description } = request.body
+        await announcemet.insertOne({
+            announcement: announce,
+            description: description
+        })
+        response.status(201)
+        response.send({
+            "message": "new announcement created"
+        })
+    }
+    catch (error) {
+        response.send(error.message)
+    }
+})
+
+app.delete("/deleteannouncement/:id", jwtVerification, async (request, response) => {
+    try {
+        const { id } = request.params
+        await announcemet.deleteOne({ "_id": id })
+        response.status(209)
+        response.send({
+            "message": 'deleted successfully'
+        })
+    }
+    catch (error) {
+        response.send(error.message)
+    }
+})
+
+app.post('/event-images', jwtVerification, upload.single('poster'), async (req, res) => {
+    try {
+        const { id } = req.body;
+        if (!id) {
+            return res.status(400).json({ message: "Event ID is required" });
+        }
+        if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded" });
+        }
+        const result = await cloudinary.uploader.upload(req.file.path);
+        const imageData = {
+            url: result.secure_url
+        };
+        const updatedEvent = await EventImages.findByIdAndUpdate(
+            id,
+            {
+                $push: { poster: imageData }
+            },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
+        if (!updatedEvent) {
+            return res.status(404).json({ message: "Event not found" });
+        }
+        res.status(201)
+        res.send("added successfully")
+    } catch (error) {
+        console.error("Upload Error:", error);
+        res.status(500)
+        res.send("internal server error")
+    }
+});
+
+app.post('/newevent', jwtVerification, upload.single('poster'), async (req, res) => {
     try {
 
         const result = await cloudinary.uploader.upload(req.file.path);
@@ -187,6 +286,72 @@ app.post('/newevent', upload.single('poster'), async (req, res) => {
     }
 });
 
+app.delete('/remove-event/:id', jwtVerification, async (request, response) => {
+    try {
+        const { id } = request.params
+        await Event.deleteOne({ "_id": id })
+        response.status(209)
+        response.send({
+            "message": "event-deleted-successfully"
+        })
+    }
+    catch (err) {
+        response.status(500)
+        response.send(err.message)
+    }
+})
+
+app.post('/update-event/:id', jwtVerification, async (request, response) => {
+    try {
+        const { id } = request.params
+        const result = await cloudinary.uploader.upload(req.file.path);
+        const organisers = JSON.parse(req.body.organisers);
+        const timeline = JSON.parse(req.body.timeline);
+        const timings = JSON.parse(req.body.timings);
+
+        await Event.collection.updateOne({ "_id": id }, {
+            $set:
+            {
+                title: req.body.title,
+                type: req.body.type,
+                description: req.body.description,
+                details: req.body.details,
+                venue: req.body.venue,
+                organisers,
+                timeline,
+                timings,
+                createdBy: req.body.createdBy,
+                isActive: req.body.isActive === "true",
+
+                poster: {
+                    url: result.secure_url,
+                    public_id: result.public_id
+                }
+            }
+        });
+        fs.unlinkSync(req.file.path);
+        res.status(201)
+        res.send("successful")
+        response.send({
+            "message": "updated successfully"
+        })
+    }
+    catch (err) {
+        response.send(err.message)
+    }
+})
+
+
+
+app.get("/allannouncements", (request, response) => {
+    try {
+        const data = announcemet.find()
+        response.send(data)
+    }
+    catch (error) {
+        response.send(error.message)
+    }
+})
 
 
 app.get("/allevents/:type", async (request, response) => {
@@ -201,43 +366,6 @@ app.get("/allevents/:type", async (request, response) => {
         response.send(err.message)
     }
 })
-
-
-
-app.post('/event-images', upload.single('poster'), async (req, res) => {
-    try {
-        const { id } = req.body;
-        if (!id) {
-            return res.status(400).json({ message: "Event ID is required" });
-        }
-        if (!req.file) {
-            return res.status(400).json({ message: "No file uploaded" });
-        }
-        const result = await cloudinary.uploader.upload(req.file.path);
-        const imageData = {
-            url: result.secure_url
-        };
-        const updatedEvent = await EventImages.findByIdAndUpdate(
-            id,
-            {
-                $push: { poster: imageData }
-            },
-            {
-                new: true,
-                runValidators: true
-            }
-        );
-        if (!updatedEvent) {
-            return res.status(404).json({ message: "Event not found" });
-        }
-        res.status(201)
-        res.send("added successfully")
-    } catch (error) {
-        console.error("Upload Error:", error);
-        res.status(500)
-        res.send("internal server error")
-    }
-});
 
 
 
